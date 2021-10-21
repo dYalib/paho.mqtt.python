@@ -197,9 +197,11 @@ transport
     set to "websockets" to send MQTT over WebSockets. Leave at the default of
     "tcp" to use raw TCP.
 
-auto_ack
-    set to False to let application acknowledge messages using the ack(message.mid)
-    entry point, instead of letting the library take care of it on receipt.
+ack_mode
+    set to "app_ack_in_order" to let application acknowledge messages using the ``ack(message.mid)`
+    entry point. Note that the mqtt specification requires that messages be acknowledged
+    in the same order as they are received.
+    Leave at the default of "auto" to letting the library take care of it on receipt.
 
 Constructor Example
 ...................

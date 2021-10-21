@@ -513,7 +513,7 @@ class Client(object):
     """
 
     def __init__(self, client_id="", clean_session=None, userdata=None,
-                 protocol=MQTTv311, transport="tcp", auto_ack=True):
+                 protocol=MQTTv311, transport="tcp", ack_mode="auto"):
         """client_id is the unique client id string used when connecting to the
         broker. If client_id is zero length or None, then the behaviour is
         defined by which protocol version is in use. If using MQTT v3.1.1, then
@@ -546,12 +546,17 @@ class Client(object):
         Set transport to "websockets" to use WebSockets as the transport
         mechanism. Set to "tcp" to use raw TCP, which is the default.
 
-        Normally, when a message is received, the library automatically 
-        acknowledges immediately.  auto_ack=False allows the application to 
-        acknowledge receipt after it has completed processing of a message 
-        using a the ack() method. This addresses vulnerabilty to message loss 
-        if applications fails while processing a message, or while it pending 
+        With QoS=1, normally when a message is received, the library
+        automatically acknowledges immediately (ack_mode="auto").
+        With ack_mode="app_ack_in_order" the control over the acknowledgement
+        is given to the application. This allows the application to acknowledge
+        receipt after it has completed processing of a message using the
+        ack() method. This addresses vulnerability to message loss if
+        applications fails while processing a message, or while it pending
         locally.
+        Note that the mqtt specification requires that messages be acknowledged in the same order as they are received.
+        Look at chapter 4.6 - "Message ordering" in the official mqtt specification for more details.
+        Note also, this only affects Qos=1
         """
 
         if protocol == MQTTv5:
@@ -568,7 +573,11 @@ class Client(object):
         if transport.lower() not in ('websockets', 'tcp'):
             raise ValueError(
                 'transport must be "websockets" or "tcp", not %s' % transport)
-        self._auto_ack = auto_ack
+
+        if ack_mode not in ('auto', 'app_ack_in_order'):
+            raise ValueError('ack_mode must be "auto" or "app_ack_in_order", not %s' % ack_mode)
+
+        self._ack_mode = ack_mode
         self._transport = transport.lower()
         self._protocol = protocol
         self._userdata = userdata
@@ -3224,7 +3233,7 @@ class Client(object):
             self._handle_on_message(message)
             return MQTT_ERR_SUCCESS
         elif message.qos == 1:
-            if self._auto_ack:
+            if self._ack_mode == "auto":
                 rc = self._send_puback(message.mid)
             else:
                 rc = MQTT_ERR_SUCCESS
@@ -3239,22 +3248,25 @@ class Client(object):
         else:
             return MQTT_ERR_PROTOCOL
 
-    def ack( self, mid ):
+    def ack(self, mid):
         """
            send an acknowledgement for a given message id. (stored in message.mid )
-           only useful in QoS=1 and auto_ack=False
+           only useful in QoS=1 and ack_mode!="auto"
         """
-        if self._auto_ack : 
+        if self._ack_mode == "auto":
             return MQTT_ERR_SUCCESS
         return self._send_puback(mid)
 
-    def auto_ack( self, on=True ):
+    def auto_ack(self, on=True):
         """
            The paho library normally acknowledges messages as soon as they are delivered to the caller.
-           If auto_ack is turned off, then the caller can manually acknowledge messages once application
+           If ack_mode is set to "auto", then the caller can manually acknowledge messages once application
            processing is complete.
         """
-        self._auto_ack = on
+        if on:
+            self._ack_mode = "auto"
+        else:
+            self._ack_mode = "app_ack_in_order"
 
     def _handle_pubrel(self):
         if self._protocol == MQTTv5:
